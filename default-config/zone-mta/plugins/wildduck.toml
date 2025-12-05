@@ -1,4 +1,4 @@
-["modules/zonemta-wildduck"]
+["modules/@zone-eu/zonemta-wildduck"]
 enabled = ["receiver", "sender", "main"]
 
 # to which SMTP interfaces this plugin applies to. Use "*" for all interfaces
@@ -20,7 +20,7 @@ uploadAll = false      # if false then messages from Outlook are not uploaded to
 # SRS settings for forwarded emails
 # ---------------------------------
 
-["modules/zonemta-wildduck".srs]
+["modules/@zone-eu/zonemta-wildduck".srs]
 # Handle rewriting of forwarded emails. If false then SRS is not used
 # Only affect messages that have interface set to "forwarder"
 enabled = false
@@ -34,7 +34,7 @@ rewriteDomain="email.example.com"
 # DKIM Settings
 # -------------
 
-["modules/zonemta-wildduck".dkim]
+["modules/@zone-eu/zonemta-wildduck".dkim]
 # If enabled then encrypt DKIM keys with the secret password. By default DKIM k>
 # are not encrypted and stored as cleartext. Once set up do not change these va>
 # otherwise decrypting DKIM keys is going to fail
@@ -50,11 +50,11 @@ hashAlgo="sha256"
 secret="super secret key"
 
 
-["modules/zonemta-wildduck".gelf]
+["modules/@zone-eu/zonemta-wildduck".gelf]
 enabled = false
 component = "mta"
 
-["modules/zonemta-wildduck".gelf.options]
+["modules/@zone-eu/zonemta-wildduck".gelf.options]
 graylogPort = 12201
 graylogHostname = 'graylog'
 connection = 'wan'
