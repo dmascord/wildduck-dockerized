@@ -1,6 +1,6 @@
 FROM node:25.3.0-alpine3.23 as builder
 
-ARG version=3.1.1
+ARG version=v3.1.1
 ARG plugin_version=5.8.28
 
 RUN apk add --no-cache git python3 make g++
