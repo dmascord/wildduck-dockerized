@@ -67,6 +67,12 @@ Set these variables in `.env` (see `example.env`). `CERT_RESOLVER` must match th
 When certs change, Haraka is restarted automatically. ZoneMTA reads the updated key/cert on next STARTTLS handshake.
 If Traefik runs outside this compose file, override the `haraka-cert-sync` volume to mount the external `acme.json`.
 
+## Haraka fixup_date plugin
+This stack includes a custom Haraka plugin at `docker-images/haraka/fixup_date.js`. It ensures
+inbound messages always have a valid `Date` header by capturing the arrival time and inserting
+one when missing. The plugin is copied into the Haraka image during build and referenced in
+`config/haraka/plugins` as `fixup_date`.
+
 ## Auto-archive
 The `auto-archive` container runs a scheduled job that moves old mail into monthly archive folders.
 Defaults can be set via environment variables in `.env`:
