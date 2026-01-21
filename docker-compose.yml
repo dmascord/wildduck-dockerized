@@ -1,16 +1,50 @@
 version: "3.8"
+
 volumes:
   mongo:
   redis:
   traefik:
-services: 
+
+services:
+  autodiscover:
+    image: monogramm/autodiscover-email-settings:latest
+    container_name: autodiscover
+    environment:
+      - COMPANY_NAME=${COMPANY_NAME:-}
+      - SUPPORT_URL=${SUPPORT_URL:-}
+      - DOMAIN=${MAIL_DOMAIN:-example.com}
+      # IMAP configuration (host mandatory to enable)
+      - IMAP_HOST=${MAIL_HOSTNAME:-mail.example.com}
+      - IMAP_PORT=993
+      - IMAP_SOCKET=SSL
+      # POP configuration (host mandatory to enable)
+      - POP_HOST=${MAIL_HOSTNAME:-mail.example.com}
+      - POP_PORT=995
+      - POP_SOCKET=SSL
+      # SMTP configuration (host mandatory to enable)
+      - SMTP_HOST=${MAIL_HOSTNAME:-mail.example.com}
+      - SMTP_PORT=465
+      - SMTP_SOCKET=SSL
+    labels:
+      traefik.enable: true
+      traefik.http.routers.wildduck-autoconfig.entrypoints: websecure
+      traefik.http.routers.wildduck-autoconfig.rule: HostRegexp(`^(autoconfig|autodiscover).${MAIL_DOMAIN}`)
+      traefik.http.routers.wildduck-autoconfig.tls: true
+      traefik.http.routers.wildduck-autoconfig.tls.certresolver: ${CERT_RESOLVER:-letsencrypt}
+      traefik.http.services.autoconfig.loadbalancer.server.port: 8000
+
   wildduck:
-    image: ghcr.io/zone-eu/wildduck:1.45.5
+    build:
+      context: ./docker-images/wildduck
+      dockerfile: Dockerfile
+      args:
+        WILDDUCK_REPO: ${WILDDUCK_REPO:-https://github.com/nodemailer/wildduck.git}
+        WILDDUCK_REF: ${WILDDUCK_REF:-master}
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
-      # - "143:143" # for local testing
-      # - "110:110" # for local testing
+      - "${PUBLIC_IP:-0.0.0.0}:143:143"
+      - "${PUBLIC_IP:-0.0.0.0}:110:110"
     depends_on:
       - mongo
       - redis
@@ -19,25 +53,31 @@ services:
     labels:
       traefik.enable: true
       traefik.tcp.routers.wildduck-imaps.entrypoints: imaps
-      traefik.tcp.routers.wildduck-imaps.rule: HostSNI(`HOSTNAME`)
-      # traefik.tcp.routers.wildduck-imaps.tls.certresolver: letsencrypt
-      traefik.tcp.routers.wildduck-imaps.tls: true
+      traefik.tcp.routers.wildduck-imaps.rule: HostSNI(`${HOSTNAMES}`)
+      traefik.tcp.routers.wildduck-imaps.tls.certresolver: ${CERT_RESOLVER:-letsencrypt}
       traefik.tcp.routers.wildduck-imaps.service: wildduck-imaps
       traefik.tcp.services.wildduck-imaps.loadbalancer.server.port: 143
       traefik.tcp.routers.wildduck-pop3s.entrypoints: pop3s
-      traefik.tcp.routers.wildduck-pop3s.rule: HostSNI(`HOSTNAME`)
-      # traefik.tcp.routers.wildduck-pop3s.tls.certresolver: letsencrypt
-      traefik.tcp.routers.wildduck-pop3s.tls: true
+      traefik.tcp.routers.wildduck-pop3s.rule: HostSNI(`${HOSTNAMES}`)
+      traefik.tcp.routers.wildduck-pop3s.tls.certresolver: ${CERT_RESOLVER:-letsencrypt}
       traefik.tcp.routers.wildduck-pop3s.service: wildduck-pop3s
       traefik.tcp.services.wildduck-pop3s.loadbalancer.server.port: 110
 
-  wildduck-webmail:
-    image: nodemailer/wildduck-webmail:latest
+  wildduck-tasks:
+    image: wildduck-dockerized-wildduck
     restart: unless-stopped
-    command: 
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./config/wildduck:/wildduck/config
+    command: ["node", "/wildduck/tasks.js", "--config=/wildduck/config/default.toml"]
+
+  wildduck-webmail:
+    image: ${WILDDUCK_WEBMAIL_IMAGE:-nodemailer/wildduck-webmail:latest}
+    restart: unless-stopped
+    command:
       - ""
-    # ports:
-    #   - 3000:3000 # for local testing
     depends_on:
       - mongo
       - redis
@@ -47,59 +87,107 @@ services:
     labels:
       traefik.enable: true
       traefik.http.routers.wildduck-webmail.entrypoints: websecure
-      traefik.http.routers.wildduck-webmail.rule: Host(`HOSTNAME`)
+      traefik.http.routers.wildduck-webmail.rule: Host(`${HOSTNAMES}`)
       traefik.http.routers.wildduck-webmail.tls: true
-      # traefik.http.routers.wildduck-webmail.tls.certresolver: letsencrypt
+      traefik.http.routers.wildduck-webmail.tls.certresolver: ${CERT_RESOLVER:-letsencrypt}
       traefik.http.services.wildduck-webmail.loadbalancer.server.port: 3000
 
   zonemta:
-    image: ghcr.io/zone-eu/zonemta-wildduck:1.32.20
+    build:
+      context: ./docker-images/zone-mta
+      dockerfile: Dockerfile
+      args:
+        ZONEMTA_TEMPLATE_REPO: ${ZONEMTA_TEMPLATE_REPO:-https://github.com/zone-eu/zone-mta-template.git}
+        ZONEMTA_TEMPLATE_REF: ${ZONEMTA_TEMPLATE_REF:-master}
+        ZONEMTA_VERSION: ${ZONEMTA_VERSION:-latest}
+        ZONEMTA_WILDDUCK_VERSION: ${ZONEMTA_WILDDUCK_VERSION:-latest}
     restart: unless-stopped
-    # ports:
-    #   - "587:587" # for local testing
-    depends_on: 
+    ports:
+      - "${PUBLIC_IP:-0.0.0.0}:587:587"
+    depends_on:
       - mongo
       - redis
     volumes:
       - ./config/zone-mta:/app/config
-    labels:
-      traefik.enable: true
-      traefik.tcp.routers.zonemta.entrypoints: smtps
-      traefik.tcp.routers.zonemta.rule: HostSNI(`HOSTNAME`)
-      # traefik.tcp.routers.zonemta.tls.certresolver: letsencrypt
-      traefik.tcp.routers.zonemta.tls: true
-      traefik.tcp.services.zonemta.loadbalancer.server.port: 587
 
   haraka:
-    image: ghcr.io/zone-eu/haraka-plugin-wildduck:5.8.22
+    build:
+      context: ./docker-images/haraka
+      dockerfile: Dockerfile
+      args:
+        HARAKA_REPO: ${HARAKA_REPO:-https://github.com/haraka/Haraka.git}
+        HARAKA_REF: ${HARAKA_REF:-master}
+        HARAKA_PLUGIN_VERSION: ${HARAKA_PLUGIN_VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "25:25"
+      - "${PUBLIC_IP:-0.0.0.0}:25:25"
     depends_on:
       - mongo
       - redis
       - rspamd
     volumes:
       - ./config/haraka:/app/config
-      - ./certs/HOSTNAME-key.pem:/app/config/tls_key.pem
-      - ./certs/HOSTNAME.pem:/app/config/tls_cert.pem
+
+  haraka-cert-sync:
+    build:
+      context: ./docker-images/haraka-cert-sync
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - haraka
+    volumes:
+      - traefik:/traefik:ro
+      - ./config/haraka:/haraka
+      - ./config/zone-mta:/zonemta
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CERT_DOMAIN=${CERT_DOMAIN:-mail.example.com}
+      - CERT_RESOLVER=${CERT_RESOLVER:-}
+      - ACME_PATH=${ACME_PATH:-/traefik/acme.json}
+      - CERT_OUT=/haraka/tls_cert.pem
+      - KEY_OUT=/haraka/tls_key.pem
+      - ZONEMTA_CERT_OUT=/zonemta/keys/smtp-cert.pem
+      - ZONEMTA_KEY_OUT=/zonemta/keys/smtp-key.pem
+      - HARAKA_CONTAINER=wildduck-dockerized-haraka-1
+      - SYNC_SCHEDULE=${SYNC_SCHEDULE:-15 * * * *}
 
   rspamd:
     image: nodemailer/rspamd
+    build:
+      context: ./docker-images/rspamd
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - redis
     volumes:
       - ./config/rspamd/override.d:/etc/rspamd/override.d
-      - ./config/rspamd/worker-normal.conf:/etc/rspamd/worker-normal.conf
       - ./config/rspamd/local.d:/etc/rspamd/local.d
 
+  auto-archive:
+    build:
+      context: ./docker-images/auto-archive
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - wildduck
+    environment:
+      - WILDDUCK_API=http://wildduck:8080
+      - ARCHIVE_BASE=${ARCHIVE_BASE:-Archives}
+      - ARCHIVE_MONTHS=${ARCHIVE_MONTHS:-3}
+      - ARCHIVE_PATTERN=${ARCHIVE_PATTERN:-{base}/{year}/{month}}
+      - ARCHIVE_ALL_FOLDERS=${ARCHIVE_ALL_FOLDERS:-}
+      - ARCHIVE_INCLUDE_BASE=${ARCHIVE_INCLUDE_BASE:-}
+      - ARCHIVE_USERS=${ARCHIVE_USERS:-}
+      - ARCHIVE_PROGRESS=${ARCHIVE_PROGRESS:-}
+      - SCHEDULE=${ARCHIVE_SCHEDULE:-15 2 * * *}
+
   mongo:
-    image: mongo
+    image: mongo:7
     restart: unless-stopped
     volumes:
       - mongo:/data/db
-    
+      - ./config/mongod.conf:/etc/mongod.conf
+
   redis:
     image: redis:alpine
     restart: unless-stopped
@@ -122,7 +210,7 @@ services:
       - "--providers.file.watch=true"
       - "--serversTransport.insecureSkipVerify=true"
       - "--serversTransport.rootCAs=/etc/traefik/certs/rootCA.pem"
-      - "--log.level=DEBUG"
+      - "--log.level=INFO"
       # - "--certificatesresolvers.letsencrypt.acme.email=ACME_EMAIL"
       # - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
       # - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
@@ -132,7 +220,6 @@ services:
       traefik.http.routers.redirs.entrypoints: web
       traefik.http.routers.redirs.middlewares: redirect-to-https
       traefik.http.routers.redirs.rule: hostregexp(`{host:.+}`)
-      
     ports:
       - 80:80/tcp
       - 443:443/tcp
@@ -142,5 +229,5 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik:/data
-      - ./certs:/etc/traefik/certs  # Mount your certs directory
+      - ./certs:/etc/traefik/certs
       - ./dynamic_conf:/etc/traefik/dynamic_conf:ro

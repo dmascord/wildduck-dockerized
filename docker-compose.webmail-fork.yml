@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  wildduck-webmail:
+    build:
+      context: ./wildduck-webmail
+      dockerfile: Dockerfile
+    image: wildduck-dockerized-wildduck-webmail

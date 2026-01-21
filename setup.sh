@@ -18,6 +18,7 @@ if [ "$#" -gt "0" ]
         HOSTNAME=$MAILDOMAIN
     fi
 
+    HOSTNAMES=$HOSTNAME
     echo -e "DOMAINNAME: $MAILDOMAIN, HOSTNAME: $HOSTNAME, FULL_SETUP: $FULL_SETUP"
   else
     echo -e "You specified ZERO arguments, I will ask you for arguments directly \n"
@@ -31,6 +32,7 @@ if [ "$#" -gt "0" ]
         * ) echo "No hostname provided. Will use domain as hostname"; HOSTNAME=$MAILDOMAIN;;
     esac
 
+    HOSTNAMES=$HOSTNAME
     echo -e "DOMAINNAME: $MAILDOMAIN, HOSTNAME: $HOSTNAME"
 fi
 
@@ -44,11 +46,20 @@ fi
 echo "Copying default docker-compose to ./config-generated"
 cp ./docker-compose.yml ./config-generated/docker-compose.yml
 
+# Environment file
+if [ ! -e ./config-generated/.env ]; then
+    echo "Copying example.env to ./config-generated/.env"
+    cp ./example.env ./config-generated/.env
+fi
+sed -i "s|^HOSTNAMES=.*|HOSTNAMES=$HOSTNAMES|" ./config-generated/.env
+sed -i "s|^MAIL_DOMAIN=.*|MAIL_DOMAIN=$MAILDOMAIN|" ./config-generated/.env
+sed -i "s|^MAIL_HOSTNAME=.*|MAIL_HOSTNAME=$HOSTNAME|" ./config-generated/.env
+sed -i "s|^CERT_DOMAIN=.*|CERT_DOMAIN=$HOSTNAME|" ./config-generated/.env
+
 # Traefik
-echo "Copying Traefik config and replacing default configuration"
+echo "Copying Traefik config"
 cp -r ./dynamic_conf ./config-generated
 sed -i "s|\./config/|./config-generated/|g" ./config-generated/docker-compose.yml
-sed -i "s|HOSTNAME|$HOSTNAME|g" ./config-generated/docker-compose.yml
 
 # Certs for traefik
 USE_SELF_SIGNED_CERTS=false
@@ -81,67 +92,24 @@ EOF
     openssl x509 -req -in ./config-generated/certs/$HOSTNAME.csr -CA ./config-generated/certs/rootCA.pem -CAkey ./config-generated/certs/rootCA.key -CAcreateserial -out ./config-generated/certs/$HOSTNAME.crt -days 825 -sha256 -extfile ./config-generated/certs/$HOSTNAME.ext
     mv ./config-generated/certs/$HOSTNAME.crt ./config-generated/certs/$HOSTNAME.pem
     mv ./config-generated/certs/$HOSTNAME.key ./config-generated/certs/$HOSTNAME-key.pem
+
+    # Update Traefik dynamic config to match generated cert names
+    sed -i "s|wildduck\\.dockerized\\.test|$HOSTNAME|g" ./config-generated/dynamic_conf/dynamic.yml
+
+    # Copy certs for Haraka + ZoneMTA STARTTLS
+    mkdir -p ./config-generated/config-generated/haraka
+    mkdir -p ./config-generated/config-generated/zone-mta/keys
+    cp ./config-generated/certs/$HOSTNAME.pem ./config-generated/config-generated/haraka/tls_cert.pem
+    cp ./config-generated/certs/$HOSTNAME-key.pem ./config-generated/config-generated/haraka/tls_key.pem
+    cp ./config-generated/certs/$HOSTNAME.pem ./config-generated/config-generated/zone-mta/keys/smtp-cert.pem
+    cp ./config-generated/certs/$HOSTNAME-key.pem ./config-generated/config-generated/zone-mta/keys/smtp-key.pem
 fi
-
-# Haraka certs settings
-# Replace the key line
-sed -i 's|./certs/HOSTNAME-key.pem|./certs/$HOSTNAME-key.pem|g' ./config-generated/docker-compose.yml
-
-# Replace the cert line
-sed -i 's|./certs/HOSTNAME.pem|./certs/$HOSTNAME.pem|g' ./config-generated/docker-compose.yml
 
 if ! $USE_SELF_SIGNED_CERTS; then
     # use let's encrypt
-    sed -i "s|# - \"--certificatesresolvers.letsencrypt.acme.email=ACME_EMAIL\"|- \"--certificatesresolvers.letsencrypt.acme.email=domainadmin@$MAILDOMAIN\"|g" ./config-generated/docker-compose.yml
-    sed -i "s|# - \"--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json\"|- \"--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json\"|g" ./config-generated/docker-compose.yml
-    sed -i "s|# - \"--certificatesresolvers.letsencrypt.acme.tlschallenge=true\"|- \"--certificatesresolvers.letsencrypt.acme.tlschallenge=true\"|g" ./config-generated/docker-compose.yml
-
-    # Uncomment the traefik.tcp.routers.zonemta.tls.certresolver line
-    sed -i "s|# traefik.tcp.routers.zonemta.tls.certresolver: letsencrypt|traefik.tcp.routers.zonemta.tls.certresolver: letsencrypt|g" ./config-generated/docker-compose.yml
-
-    # Uncomment the traefik.tcp.routers.wildduck-pop3s.tls.certresolver line
-    sed -i "s|# traefik.tcp.routers.wildduck-pop3s.tls.certresolver: letsencrypt|traefik.tcp.routers.wildduck-pop3s.tls.certresolver: letsencrypt|g" ./config-generated/docker-compose.yml
-
-    # Uncomment the traefik.tcp.routers.wildduck-imaps.tls.certresolver line
-    sed -i "s|# traefik.tcp.routers.wildduck-imaps.tls.certresolver: letsencrypt|traefik.tcp.routers.wildduck-imaps.tls.certresolver: letsencrypt|g" ./config-generated/docker-compose.yml
-
-    # Uncomment the traefik.http.routers.wildduck-webmail.tls.certresolver line
-    sed -i "s|# traefik.http.routers.wildduck-webmail.tls.certresolver: letsencrypt|traefik.http.routers.wildduck-webmail.tls.certresolver: letsencrypt|g" ./config-generated/docker-compose.yml
-
-    # Delete the traefik.tcp.routers.zonemta.tls: true line
-    sed -i "/traefik.tcp.routers.zonemta.tls: true/d" ./config-generated/docker-compose.yml
-
-    # Delete the traefik.tcp.routers.wildduck-pop3s.tls: true line
-    sed -i "/traefik.tcp.routers.wildduck-pop3s.tls: true/d" ./config-generated/docker-compose.yml
-
-    # Delete the traefik.tcp.routers.wildduck-imaps.tls: true line
-    sed -i "/traefik.tcp.routers.wildduck-imaps.tls: true/d" ./config-generated/docker-compose.yml
-
-    # Delete the traefik.http.routers.wildduck-webmail.tls: true line
-    sed -i "/traefik.http.routers.wildduck-webmail.tls: true/d" ./config-generated/docker-compose.yml
-
-    sed -i "/- \.\/dynamic_conf:\/etc\/traefik\/dynamic_conf:ro/d" ./config-generated/docker-compose.yml
-
-    # Delete the providers.file=true line
-    sed -i '/- "--providers.file=true"/d' ./config-generated/docker-compose.yml
-
-    # Delete the providers.file.directory line
-    sed -i '/- "--providers.file.directory=\/etc\/traefik\/dynamic_conf"/d' ./config-generated/docker-compose.yml
-
-    # Delete the providers.file.watch line
-    sed -i '/- "--providers.file.watch=true"/d' ./config-generated/docker-compose.yml
-
-    # Delete the serversTransport.insecureSkipVerify line
-    sed -i '/- "--serversTransport.insecureSkipVerify=true"/d' ./config-generated/docker-compose.yml
-
-    # Delete the serversTransport.rootCAs line
-    sed -i '/- "--serversTransport.rootCAs=\/etc\/traefik\/certs\/rootCA.pem"/d' ./config-generated/docker-compose.yml
-
-    # Delete the log.level=DEBUG line
-    sed -i '/- "--log.level=DEBUG"/d' ./config-generated/docker-compose.yml
-
-    # Delete the certs line
-    sed -i '/- \.\/certs:\/etc\/traefik\/certs.*# Mount your certs directory/d' ./config-generated/docker-compose.yml
+    sed -i "s|# - \\\"--certificatesresolvers.letsencrypt.acme.email=ACME_EMAIL\\\"|- \\\"--certificatesresolvers.letsencrypt.acme.email=domainadmin@$MAILDOMAIN\\\"|g" ./config-generated/docker-compose.yml
+    sed -i "s|# - \\\"--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json\\\"|- \\\"--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json\\\"|g" ./config-generated/docker-compose.yml
+    sed -i "s|# - \\\"--certificatesresolvers.letsencrypt.acme.tlschallenge=true\\\"|- \\\"--certificatesresolvers.letsencrypt.acme.tlschallenge=true\\\"|g" ./config-generated/docker-compose.yml
 fi
 
 echo "Replacing domains in $SERVICES configuration"
@@ -187,137 +155,8 @@ sed -i "s/secret: \"secret value\"/secret: \"$SRS_SECRET\"/" ./config-generated/
 sed -i "s|example\.com|$HOSTNAME|g" ./config-generated/config-generated/wildduck-webmail/default.toml
 sed -i "s|accessToken=\"\"|accessToken=\"$ACCESS_TOKEN\"|g" ./config-generated/config-generated/wildduck-webmail/default.toml
 
-# Haraka certs from Traefik
 if ! $USE_SELF_SIGNED_CERTS; then
-    echo "Getting certs for Haraka from Traefik"
-
-    CURRENT_DIR=$(basename "$(pwd)")
-    if [ -f "docker-compose.yml" ] && [ "$CURRENT_DIR" = "config-generated" ]; then
-        docker compose up traefik -d 
-    else
-        cd ./config-generated/ 
-        docker compose up traefik -d
-        cd ../
-    fi
-
-    echo "Waiting for container to start..."
-    sleep 2 # Just in case
-    
-    mkdir ./config-generated/certs/
-    CERT_FILE="./config-generated/certs/$HOSTNAME.pem"
-    KEY_FILE="./config-generated/certs/$HOSTNAME-key.pem"
-
-    CONTAINER_ID=$(docker ps --filter "name=traefik" --format "{{.ID}}")
-    docker cp $CONTAINER_ID:/data/acme.json ./acme.json
-
-    # Extract the certificate
-    CERT=$(jq -r --arg domain "$HOSTNAME" '.letsencrypt.Certificates[] | select(.domain.main == $domain) | .certificate' acme.json)
-    
-    # Extract the private key
-    KEY=$(jq -r --arg domain "$HOSTNAME" '.letsencrypt.Certificates[] | select(.domain.main == $domain) | .key' acme.json)
-
-    # Decode and save certificate
-    echo "$CERT" | base64 -d > "$CERT_FILE"
-
-    # Decode and save private key
-    echo "$KEY" | base64 -d > "$KEY_FILE"
-
-    docker stop $CONTAINER_ID
-
-    # Create script to update certificates
-    cat > update_certs.sh << 'EOF'
-#!/bin/bash
-
-# Import the HOSTNAME variable from the original script environment
-HOSTNAME="$HOSTNAME"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ACME_PATH="$SCRIPT_DIR/acme.json"
-NEW_ACME_PATH="$SCRIPT_DIR/acme.json.new"
-CERT_FILE="$SCRIPT_DIR/config-generated/certs/$HOSTNAME.pem"
-KEY_FILE="$SCRIPT_DIR/config-generated/certs/$HOSTNAME-key.pem"
-
-# Get container ID for Traefik
-CONTAINER_ID=$(docker ps --filter "name=traefik" --format "{{.ID}}")
-
-if [ -z "$CONTAINER_ID" ]; then
-    echo "Traefik container not running. Starting it..."
-    
-    CURRENT_DIR=$(basename "$(pwd)")
-    if [ -f "docker-compose.yml" ] && [ "$CURRENT_DIR" = "config-generated" ]; then
-        docker compose up traefik -d 
-    else
-        cd ./config-generated/ 
-        docker compose up traefik -d
-        cd "$SCRIPT_DIR"
-    fi
-    
-    echo "Waiting for container to start..."
-    sleep 2
-    CONTAINER_ID=$(docker ps --filter "name=traefik" --format "{{.ID}}")
-    
-    if [ -z "$CONTAINER_ID" ]; then
-        echo "Failed to start Traefik container. Exiting."
-        exit 1
-    fi
-fi
-
-# Copy the acme.json file from Traefik container
-docker cp $CONTAINER_ID:/data/acme.json $NEW_ACME_PATH
-
-# Check if acme.json has changed
-if [ -f "$ACME_PATH" ] && diff -q "$ACME_PATH" "$NEW_ACME_PATH" >/dev/null; then
-    echo "No changes in certificates detected."
-    rm "$NEW_ACME_PATH"
-    exit 0
-fi
-
-# Replace the old acme.json with the new one
-mv "$NEW_ACME_PATH" "$ACME_PATH"
-
-echo "Certificate changes detected. Updating certificate files..."
-
-# Extract the certificate
-CERT=$(jq -r --arg domain "$HOSTNAME" '.letsencrypt.Certificates[] | select(.domain.main == $domain) | .certificate' $ACME_PATH)
-
-# Extract the private key
-KEY=$(jq -r --arg domain "$HOSTNAME" '.letsencrypt.Certificates[] | select(.domain.main == $domain) | .key' $ACME_PATH)
-
-# Check if we actually got the certificate and key
-if [ -z "$CERT" ] || [ "$CERT" == "null" ]; then
-    echo "Error: Certificate for $HOSTNAME not found!"
-    exit 1
-fi
-
-if [ -z "$KEY" ] || [ "$KEY" == "null" ]; then
-    echo "Error: Key for $HOSTNAME not found!"
-    exit 1
-fi
-
-# Create directory if it doesn't exist
-mkdir -p "$(dirname "$CERT_FILE")"
-
-# Decode and save certificate
-echo "$CERT" | base64 -d > "$CERT_FILE"
-
-# Decode and save private key
-echo "$KEY" | base64 -d > "$KEY_FILE"
-
-echo "Certificate and key updated successfully at $(date)"
-
-# Don't stop the container if it was already running
-EOF
-    # Pass the HOSTNAME variable to the script during creation
-    sed -i "s/HOSTNAME=\"\$HOSTNAME\"/HOSTNAME=\"$HOSTNAME\"/" update_certs.sh
-
-    # Make the script executable
-    chmod +x update_certs.sh
-
-    # Add weekly cron job to check for certificate updates
-    CRON_JOB="0 0 * * 0 $(pwd)/update_certs.sh >> $(pwd)/cert_update.log 2>&1"
-    (crontab -l 2>/dev/null || echo "") | grep -v "update_certs.sh" | { cat; echo "$CRON_JOB"; } | crontab -
-
-    echo "Weekly certificate update check scheduled for every Sunday at midnight"
-    echo "The script will check if Traefik has renewed the certificate and update the files accordingly"
+    echo "Haraka and ZoneMTA TLS will be synced from Traefik by the haraka-cert-sync container."
 fi
 
 echo "Done!"
