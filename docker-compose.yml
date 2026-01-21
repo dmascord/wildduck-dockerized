@@ -182,20 +182,20 @@ services:
       - SCHEDULE=${ARCHIVE_SCHEDULE:-15 2 * * *}
 
   mongo:
-    image: mongo:7
+    image: mongo:8.2.3
     restart: unless-stopped
     volumes:
       - mongo:/data/db
       - ./config/mongod.conf:/etc/mongod.conf
 
   redis:
-    image: redis:alpine
+    image: redis:8.4.0-alpine3.22
     restart: unless-stopped
     volumes:
       - redis:/data
 
   traefik:
-    image: traefik:3.3.4
+    image: traefik:3.6.7
     restart: unless-stopped
     command:
       - "--entrypoints.web.address=:80"

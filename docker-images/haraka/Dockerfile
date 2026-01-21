@@ -1,9 +1,9 @@
-FROM node:lts-alpine as builder
+FROM node:25.3.0-alpine3.23 as builder
 
-ARG version=2.8.27
-ARG plugin_version=1.29.9
+ARG version=3.1.1
+ARG plugin_version=5.8.28
 
-RUN apk add --no-cache git python make g++
+RUN apk add --no-cache git python3 make g++
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ RUN npm install --production
 RUN npm install haraka-plugin-wildduck@${plugin_version}
 
 
-FROM node:lts-alpine as app
+FROM node:25.3.0-alpine3.23 as app
 
 ENV NODE_ENV production
 

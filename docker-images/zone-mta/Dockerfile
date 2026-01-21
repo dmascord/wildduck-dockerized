@@ -1,8 +1,9 @@
-FROM node:lts-alpine as builder
+FROM node:25.3.0-alpine3.23 as builder
 
-ARG version=2.4.2
+ARG version=3.10.2
+ARG wildduck_version=1.32.21
 
-RUN apk add --no-cache git python make g++
+RUN apk add --no-cache git python3 make g++
 
 WORKDIR /app
 
@@ -10,10 +11,10 @@ RUN git clone https://github.com/zone-eu/zone-mta-template ./
 
 RUN npm install zone-mta@${version}
 RUN npm install --production
-RUN npm install zonemta-wildduck
+RUN npm install zonemta-wildduck@${wildduck_version}
 
 
-FROM node:lts-alpine as app
+FROM node:25.3.0-alpine3.23 as app
 
 ENV NODE_ENV production
 

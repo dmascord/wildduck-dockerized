@@ -33,7 +33,7 @@ services:
       - "127.0.0.1:9600:9600"
 
   graylog:
-    image: graylog/graylog:6.2
+    image: graylog/graylog:6.2.11-1
     restart: always
     depends_on:
       - opensearch
