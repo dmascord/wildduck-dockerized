@@ -21,4 +21,6 @@ RUN apk add --no-cache tini
 WORKDIR /app
 COPY --from=builder /app /app
 
+COPY fixup_date.js /app/plugins/fixup_date.js
+
 ENTRYPOINT ["/sbin/tini", "--", "node", "haraka.js"]
