@@ -1,0 +1,3 @@
+[submodule "duckyapi"]
+	path = duckyapi
+	url = git@github.com:dmascord/DuckyAPI.git

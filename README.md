@@ -84,6 +84,14 @@ Defaults can be set via environment variables in `.env`:
 Per-user overrides are read from WildDuck `metaData` fields:
 `autoArchiveEnabled`, `autoArchiveMonths`, `autoArchiveBase`, `autoArchivePattern`.
 
+## DuckyAPI + Admin panel
+This stack includes DuckyAPI and a Next.js admin UI for domain/account management.
+
+- Admin UI: `https://<host>/admin`
+- API base: `https://<host>/admin/api`
+
+The API base path is set via `BASE_URL` in `config/duckyapi/production.env` and defaults to `admin/api`.
+
 ## Using the webmail fork (optional)
 If you want the extended account settings (auto-archive UI), build webmail from the fork:
 

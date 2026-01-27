@@ -4,3 +4,7 @@ config-generated
 certs
 acme.json
 update_certs.sh
+node_modules
+.next
+dist
+duckyapi-passwords-*.txt
